@@ -105,6 +105,12 @@
             android:checked="true"
             android:text="Shorten pauses" />
 
+        <Switch
+            android:id="@+id/switch_classic_rate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Classic 11 kHz voices (off = 16 kHz wideband)" />
+
         <TextView
             android:id="@+id/label_fallback_package"
             android:layout_width="wrap_content"

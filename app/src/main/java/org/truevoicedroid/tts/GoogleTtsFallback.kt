@@ -72,10 +72,11 @@ object GoogleTtsFallback {
     data class FallbackAudio(val samples: ShortArray)
 
     /**
-     * Renders [text] with the fallback engine and returns 16 kHz mono PCM,
-     * or null when the fallback is unavailable, fails, or times out after
-     * [timeoutMs]. Must not run on the main thread (blocks); creates the
-     * TextToSpeech client on the main looper internally.
+     * Renders [text] with the fallback engine and returns mono PCM at
+     * [targetRateHz], or null when the fallback is unavailable, fails, or
+     * times out after [timeoutMs]. Must not run on the main thread
+     * (blocks); creates the TextToSpeech client on the main looper
+     * internally.
      */
     fun synthesizeBlocking(
         context: Context,
@@ -83,7 +84,8 @@ object GoogleTtsFallback {
         locale: Locale,
         rate: Float,
         pitch: Float,
-        timeoutMs: Long
+        timeoutMs: Long,
+        targetRateHz: Int = SAMPLE_RATE_HZ
     ): FallbackAudio? {
         try {
             val packageName = fallbackPackage(context)
@@ -149,7 +151,7 @@ object GoogleTtsFallback {
                     if (synthStatus != TextToSpeech.SUCCESS) return null
                     if (!done.await(timeoutMs, TimeUnit.MILLISECONDS)) return null
                     if (!success.get()) return null
-                    val samples = readWavAs16kMono(outFile) ?: return null
+                    val samples = readWavAsMono(outFile, targetRateHz) ?: return null
                     if (samples.isEmpty() || samples.all { it == 0.toShort() }) return null
                     return FallbackAudio(samples)
                 } finally {
@@ -175,10 +177,10 @@ object GoogleTtsFallback {
 
     /**
      * Reads a PCM WAV file (16-bit or 8-bit, any rate/channel count) and
-     * returns 16 kHz mono samples via linear resampling. Null on any parse
-     * failure.
+     * returns mono samples at the requested rate via linear resampling.
+     * Null on any parse failure.
      */
-    fun readWavAs16kMono(file: File): ShortArray? {
+    fun readWavAsMono(file: File, targetRateHz: Int = SAMPLE_RATE_HZ): ShortArray? {
         try {
             val bytes = file.readBytes()
             if (bytes.size < 44) return null
@@ -235,12 +237,12 @@ object GoogleTtsFallback {
                 }
                 mono[f] = acc / channels
             }
-            // Linear resample to 16 kHz.
-            val outLen = ((frames.toLong() * SAMPLE_RATE_HZ) / rate).toInt()
+            // Linear resample to the engine's output rate.
+            val outLen = ((frames.toLong() * targetRateHz) / rate).toInt()
             if (outLen <= 0) return null
             val out = ShortArray(outLen)
             for (i in 0 until outLen) {
-                val src = i.toDouble() * rate / SAMPLE_RATE_HZ
+                val src = i.toDouble() * rate / targetRateHz
                 val i0 = src.toInt().coerceIn(0, frames - 1)
                 val i1 = (i0 + 1).coerceIn(0, frames - 1)
                 val frac = (src - i0).toFloat()

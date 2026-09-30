@@ -182,6 +182,16 @@ class TruVoiceTtsService : TextToSpeechService() {
         activeVoice = voice
         val info = VoiceCatalog.infoFor(voice)
             ?: VoiceCatalog.infoFor(VoiceCatalog.DEFAULT_VOICE)!!
+        // Output rate: 16 kHz wideband or 11 kHz classic desktop sound.
+        // Re-read per request like the voice override, so flipping the UI
+        // switch mid-queue takes effect on the next utterance.
+        val sampleRateHz = try {
+            val want = prefs().getInt(KEY_SAMPLE_RATE_HZ, VoiceCatalog.SAMPLE_RATE_HZ)
+            engine.setSampleRateHz(want)
+        } catch (t: Throwable) {
+            Log.w(TAG, "sample-rate switch failed", t)
+            VoiceCatalog.SAMPLE_RATE_HZ
+        }
         val ratePercent = try {
             request.speechRate
         } catch (t: Throwable) {
@@ -221,7 +231,7 @@ class TruVoiceTtsService : TextToSpeechService() {
             return
         }
 
-        val streamer = Streamer(callback)
+        val streamer = Streamer(callback, sampleRateHz)
         var globalOffset = 0 // char offset into the joined spoken text
 
         for (piece in parsed.pieces) {
@@ -291,7 +301,7 @@ class TruVoiceTtsService : TextToSpeechService() {
         if (!streamer.started) {
             // Native synthesis produced nothing usable: fall back to the
             // configured Google-TTS package for the whole request.
-            if (!speakViaFallback(request, info, ratePercent, pitchPercent, streamer)) {
+            if (!speakViaFallback(request, info, ratePercent, pitchPercent, streamer, sampleRateHz)) {
                 finishWithError(callback)
                 return
             }
@@ -299,7 +309,7 @@ class TruVoiceTtsService : TextToSpeechService() {
         if (stopped) return
         try {
             callback.done()
-            Log.i(TAG, "request done voice=$voice rate=$ratePercent pitch=$pitchPercent frames=${streamer.framesOut}")
+            Log.i(TAG, "request done voice=$voice rate=$ratePercent pitch=$pitchPercent sr=$sampleRateHz frames=${streamer.framesOut}")
         } catch (t: Throwable) {
             Log.w(TAG, "done() failed", t)
         }
@@ -386,7 +396,8 @@ class TruVoiceTtsService : TextToSpeechService() {
         info: VoiceCatalog.VoiceInfo,
         ratePercent: Int,
         pitchPercent: Int,
-        streamer: Streamer
+        streamer: Streamer,
+        sampleRateHz: Int = VoiceCatalog.SAMPLE_RATE_HZ
     ): Boolean {
         if (!GoogleTtsFallback.isEnabled(this)) return false
         val text = try {
@@ -406,7 +417,8 @@ class TruVoiceTtsService : TextToSpeechService() {
                 Locale.forLanguageTag(info.language),
                 ratePercent / 100.0f,
                 pitchPercent / 100.0f,
-                timeoutMs
+                timeoutMs,
+                sampleRateHz
             )
         }
         activeFuture = future
@@ -441,7 +453,10 @@ class TruVoiceTtsService : TextToSpeechService() {
      * word-boundary timing. Starts the callback lazily on the first audio
      * so a request that ends up fully silent never opens the stream.
      */
-    private inner class Streamer(private val callback: SynthesisCallback) {
+    private inner class Streamer(
+        private val callback: SynthesisCallback,
+        private val sampleRateHz: Int = VoiceCatalog.SAMPLE_RATE_HZ
+    ) {
         var started = false
             private set
 
@@ -491,7 +506,7 @@ class TruVoiceTtsService : TextToSpeechService() {
             samples: ShortArray,
             marks: List<TimedMark>
         ): Pair<ShortArray, List<TimedMark>> {
-            val shortener = PauseShortener(VoiceCatalog.SAMPLE_RATE_HZ)
+            val shortener = PauseShortener(sampleRateHz)
             val sorted = marks.sortedBy { it.frame }
             val out = ShortArray(samples.size)
             val adj = ArrayList<TimedMark>(sorted.size)
@@ -577,7 +592,7 @@ class TruVoiceTtsService : TextToSpeechService() {
             if (capped <= 0) return
             ensureStarted()
             if (!started) return
-            var remaining = (capped * VoiceCatalog.SAMPLE_RATE_HZ).toInt()
+            var remaining = (capped * sampleRateHz).toInt()
             val chunk = ByteArray(2048 * 2)
             while (remaining > 0 && !stopped) {
                 val n = minOf(remaining, 2048)
@@ -596,7 +611,7 @@ class TruVoiceTtsService : TextToSpeechService() {
             if (started) return
             try {
                 callback.start(
-                    VoiceCatalog.SAMPLE_RATE_HZ,
+                    sampleRateHz,
                     AudioFormat.ENCODING_PCM_16BIT,
                     1
                 )
@@ -631,6 +646,9 @@ class TruVoiceTtsService : TextToSpeechService() {
 
         /** Cap silent runs at ~200 ms (Panthera's "fewest pauses"). */
         const val KEY_SHORTEN_PAUSES = "shorten_pauses"
+
+        /** Output rate in Hz: 16000 wideband or 11025 classic desktop. */
+        const val KEY_SAMPLE_RATE_HZ = "sample_rate_hz"
     }
 
     private fun prefs() = getSharedPreferences(PREFS, Context.MODE_PRIVATE)

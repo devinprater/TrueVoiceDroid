@@ -42,6 +42,61 @@ class TruVoiceEngine(private val appContext: Context) {
     private var lexiconReady = false
     private var dictionary: List<Pair<String, String>>? = null
 
+    /**
+     * Output rate in Hz (16000 or 11025). New synths open at it; live ones
+     * switch between utterances via tvtts_set_sample_rate, which preserves
+     * voice/pitch/rate/volume. Guarded by [lock] with the handles.
+     */
+    private var sampleRateHz = VoiceCatalog.SAMPLE_RATE_HZ
+
+    /** Current output rate. */
+    fun sampleRateHz(): Int = synchronized(lock) { sampleRateHz }
+
+    /**
+     * Switches every live synth to [hz] (16000 or 11025) and makes it the
+     * rate for new synths. Call between utterances; a synth caught
+     * mid-utterance keeps its rate (the set call is refused) and is
+     * recreated on next use if it disagrees. Returns the rate in effect.
+     */
+    fun setSampleRateHz(hz: Int): Int {
+        val which = when (hz) {
+            11025 -> TruVoiceNative.SR_11K
+            else -> TruVoiceNative.SR_16K
+        }
+        val target = if (which == TruVoiceNative.SR_11K) 11025 else 16000
+        synchronized(lock) {
+            sampleRateHz = target
+            val dead = mutableListOf<Int>()
+            for ((voice, handle) in handles) {
+                val rc = try {
+                    TruVoiceNative.nativeSetSampleRate(handle, which)
+                } catch (e: Exception) {
+                    Log.w(TAG, "set rate failed for voice $voice", e)
+                    -1
+                }
+                if (rc != 0) dead.add(voice)
+            }
+            // A refused switch (mid-utterance) leaves a stale-rate synth;
+            // abort and drop it so the next request opens a fresh one at
+            // the target — same abort-then-destroy as discardVoice.
+            for (voice in dead) {
+                handles.remove(voice)?.let {
+                    try {
+                        TruVoiceNative.nativeRequestAbort(it)
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "abort after refused rate switch failed", t)
+                    }
+                    try {
+                        TruVoiceNative.nativeDestroy(it)
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "destroy after refused rate switch failed", t)
+                    }
+                }
+            }
+            return target
+        }
+    }
+
     fun dictionary(): List<Pair<String, String>> {
         synchronized(lock) {
             dictionary?.let { return it }
@@ -111,7 +166,7 @@ class TruVoiceEngine(private val appContext: Context) {
             handles[voice]?.let { return it }
             val lang = VoiceCatalog.languageFor(voice)
             val handle = TruVoiceNative.nativeCreateLang(
-                lang, VoiceCatalog.SAMPLE_RATE_HZ
+                lang, sampleRateHz
             )
             if (handle == 0L) throw IllegalStateException("create_lang($lang) failed")
             TruVoiceNative.nativeSetVoice(handle, voice)

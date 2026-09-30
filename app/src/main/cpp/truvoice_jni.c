@@ -187,6 +187,20 @@ Java_org_truevoicedroid_tts_TruVoiceNative_nativeSetPitch(
     if (h && h->s) tvtts_set_pitch(h->s, pitch);
 }
 
+/* Output-rate switch between utterances (tvtts_set_sample_rate refuses
+ * mid-utterance and returns -1; voice/pitch/rate/volume are preserved).
+ * `which` is a TVTTS_SR_* index: 1 = 11025 Hz classic, 2 = 16000 Hz.
+ * Returns the tvtts return code, or -1 for a bad handle. */
+JNIEXPORT jint JNICALL
+Java_org_truevoicedroid_tts_TruVoiceNative_nativeSetSampleRate(
+        JNIEnv *env, jclass cls, jlong handle, jint which) {
+    (void)env;
+    (void)cls;
+    Handle *h = (Handle *)(intptr_t)handle;
+    if (!h || !h->s) return -1;
+    return tvtts_set_sample_rate(h->s, which);
+}
+
 JNIEXPORT jint JNICALL
 Java_org_truevoicedroid_tts_TruVoiceNative_nativeAddLexicon(
         JNIEnv *env, jclass cls, jstring word, jstring phonemes) {

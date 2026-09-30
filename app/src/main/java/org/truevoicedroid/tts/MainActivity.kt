@@ -79,6 +79,17 @@ class MainActivity : AppCompatActivity() {
         switchShortenPauses.setOnCheckedChangeListener { _, checked ->
             voicePrefs.edit().putBoolean(TruVoiceTtsService.KEY_SHORTEN_PAUSES, checked).apply()
         }
+        val switchClassicRate = findViewById<Switch>(R.id.switch_classic_rate)
+        switchClassicRate.isChecked =
+            voicePrefs.getInt(TruVoiceTtsService.KEY_SAMPLE_RATE_HZ, 16000) == 11025
+        switchClassicRate.setOnCheckedChangeListener { _, checked ->
+            voicePrefs.edit().putInt(
+                TruVoiceTtsService.KEY_SAMPLE_RATE_HZ, if (checked) 11025 else 16000
+            ).apply()
+            // Takes effect on the next utterance; the service re-reads it
+            // per request and switches the synths between utterances.
+            setStatus(if (checked) "Classic 11 kHz on" else "16 kHz wideband on")
+        }
         inputFallbackPackage.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) {
                 GoogleTtsFallback.setFallbackPackage(this, inputFallbackPackage.text.toString())
@@ -225,6 +236,16 @@ class MainActivity : AppCompatActivity() {
                 if (at >= 0) spinnerVoice.setSelection(at)
             }
             inputText.setText(text)
+            intent.getIntExtra(EXTRA_RATE, -1).takeIf { it >= 50 }?.let {
+                seekRate.progress = (it - 50).coerceIn(0, seekRate.max)
+            }
+            intent.getIntExtra(EXTRA_PITCH, -1).takeIf { it >= 50 }?.let {
+                seekPitch.progress = (it - 50).coerceIn(0, seekPitch.max)
+            }
+            intent.getIntExtra(EXTRA_SAMPLE_RATE, -1).takeIf { it == 11025 || it == 16000 }?.let {
+                getSharedPreferences(TruVoiceTtsService.PREFS, MODE_PRIVATE).edit()
+                    .putInt(TruVoiceTtsService.KEY_SAMPLE_RATE_HZ, it).apply()
+            }
             android.util.Log.i(TAG, "autospeak: voice=$voiceIdx text=$text")
             speak()
         }
@@ -327,5 +348,8 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_VOICE = "voice"
         const val EXTRA_ENGINE = "engine"
         const val EXTRA_NO_VOICE = "novoice"
+        const val EXTRA_RATE = "rate"
+        const val EXTRA_PITCH = "pitch"
+        const val EXTRA_SAMPLE_RATE = "sr"
     }
 }
