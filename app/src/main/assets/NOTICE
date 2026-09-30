@@ -1,0 +1,46 @@
+TrueVoiceDroid — NOTICE
+=========================
+
+This build embeds the TruVoice speech synthesis tables and engine code
+described below. It is a personal build, not for redistribution.
+
+1. Engine data — Centigram Communications Corporation
+-----------------------------------------------------
+The constant tables the TruVoice engines read (letter-to-sound rules,
+exception dictionary and suffix tables, phoneme inventory, per-phoneme
+formant/duration/amplitude tables, prosody and duration-by-rate tables,
+and the parameters defining the twenty voices) are lifted byte for byte
+out of Centigram's binaries, whose copyright notice reads
+"Copyright (c) 1991-1997 Centigram Communications Corp."
+Centigram sold the TruVoice text-to-speech technology in June 1997;
+where the rights sit now has not been established. The tables are used
+here for personal, non-commercial purposes only.
+
+2. Portable engine code — OpenTV (MIT)
+--------------------------------------
+The C sources under app/src/main/cpp/vendor (English engine, Spanish
+engine, port layer, and table images) are OpenTV's portable
+decompilation/reimplementation of the TruVoice engine, MIT licensed.
+See the upstream project (iTruVoice Vendor/upstream/LICENSE) for the
+full license text:
+  MIT License — Copyright (c) OpenTV contributors.
+  Permission is hereby granted, free of charge, to any person obtaining
+  a copy of this software and associated documentation files (the
+  "Software"), to deal in the Software without restriction, including
+  without limitation the rights to use, copy, modify, merge, publish,
+  distribute, sublicense, and/or sell copies of the Software, subject to
+  the inclusion of the above copyright notice and this permission notice
+  in all copies or substantial portions of the Software.
+
+3. Pronunciation dictionary — IBM TTS dictionary (community profile)
+-------------------------------------------------------------------
+Whole-word respellings in assets/dictionary.tsv and stress fixes in
+assets/lexicon.tsv derive from the IBM TTS dictionary triage behind the
+Eloquence NVDA add-on community profile, via the iTruVoice project's
+machine-verified tables.
+
+4. Rate/clarity extensions
+--------------------------
+Above 253 wpm the engine shortens durations (OpenTV extension), and
+formant bandwidths widen with rate (technique from Tamas Geczy's
+TGSpeechBox, MIT). The originals' 46-253 wpm behavior is untouched.

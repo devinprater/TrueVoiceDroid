@@ -1,0 +1,129 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView
+            android:id="@+id/label_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Text to speak"
+            android:labelFor="@+id/input_text" />
+
+        <EditText
+            android:id="@+id/input_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minLines="3"
+            android:gravity="top"
+            android:inputType="textMultiLine"
+            android:hint="Type something for TruVoice to say" />
+
+        <TextView
+            android:id="@+id/label_voice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Voice"
+            android:labelFor="@+id/spinner_voice" />
+
+        <Spinner
+            android:id="@+id/spinner_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView
+            android:id="@+id/label_rate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Rate"
+            android:labelFor="@+id/seek_rate" />
+
+        <SeekBar
+            android:id="@+id/seek_rate"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="150"
+            android:contentDescription="Speech rate percent" />
+
+        <TextView
+            android:id="@+id/label_pitch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Pitch"
+            android:labelFor="@+id/seek_pitch" />
+
+        <SeekBar
+            android:id="@+id/seek_pitch"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="150"
+            android:contentDescription="Speech pitch percent" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/button_speak"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Speak" />
+
+            <Button
+                android:id="@+id/button_stop"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Stop" />
+        </LinearLayout>
+
+        <Switch
+            android:id="@+id/switch_fallback"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Google TTS fallback" />
+
+        <Switch
+            android:id="@+id/switch_override_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Settings voice wins over every request" />
+
+        <Switch
+            android:id="@+id/switch_shorten_pauses"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:checked="true"
+            android:text="Shorten pauses" />
+
+        <TextView
+            android:id="@+id/label_fallback_package"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Fallback engine package"
+            android:labelFor="@+id/input_fallback_package" />
+
+        <EditText
+            android:id="@+id/input_fallback_package"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:hint="com.google.android.tts" />
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Idle"
+            android:contentDescription="Status" />
+    </LinearLayout>
+</ScrollView>

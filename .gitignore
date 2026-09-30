@@ -1,0 +1,22 @@
+# Gradle / Android Studio
+.gradle/
+build/
+app/build/
+local.properties
+# Machine-specific JDK path lives in the environment, not the repo.
+# gradle.properties is committed sanitized (no org.gradle.java.home).
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+
+# Signing secrets
+*.jks
+*.keystore
+keystore.properties
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+*.iml
