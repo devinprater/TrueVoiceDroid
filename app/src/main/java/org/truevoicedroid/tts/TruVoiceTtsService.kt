@@ -36,7 +36,7 @@ import java.util.concurrent.TimeoutException
  */
 class TruVoiceTtsService : TextToSpeechService() {
 
-    private lateinit var engine: TruVoiceEngine
+    private lateinit var engine: TruVoiceWorkerClient
     private lateinit var synthExecutor: ExecutorService
 
     @Volatile
@@ -56,7 +56,7 @@ class TruVoiceTtsService : TextToSpeechService() {
 
     override fun onCreate() {
         super.onCreate()
-        engine = TruVoiceEngine(applicationContext)
+        engine = TruVoiceWorkerClient(applicationContext)
         synthExecutor = Executors.newSingleThreadExecutor()
     }
 
@@ -154,15 +154,13 @@ class TruVoiceTtsService : TextToSpeechService() {
 
     override fun onStop() {
         stopped = true
+        // Ask the engine worker to stop between steps.  Nothing here
+        // interrupts the thread that is inside native code: a worker that
+        // will not stop is retired by the request path and replaced.
         try {
-            activeFuture?.cancel(true)
+            engine.cancelActive()
         } catch (t: Throwable) {
             Log.w(TAG, "cancel failed", t)
-        }
-        try {
-            engine.requestAbort(activeVoice)
-        } catch (t: Throwable) {
-            Log.w(TAG, "abort failed", t)
         }
     }
 
@@ -273,7 +271,7 @@ class TruVoiceTtsService : TextToSpeechService() {
                             voice, wpm, pitch, chunk.engineText
                         )
                         if (!engine.producesSpeech(utterance)) {
-                            engine.discardVoice(voice)
+                            engine.retireWorker()
                             continue
                         }
                         pieceSilent = false
@@ -378,7 +376,7 @@ class TruVoiceTtsService : TextToSpeechService() {
             } catch (t: Throwable) {
                 Log.w(TAG, "cancel after timeout failed", t)
             }
-            engine.discardVoice(voice)
+            engine.retireWorker()
             null
         } catch (e: InterruptedException) {
             Thread.currentThread().interrupt()
