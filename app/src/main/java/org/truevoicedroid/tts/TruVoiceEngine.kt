@@ -5,7 +5,8 @@ import android.util.Log
 
 /**
  * Owns the native TruVoice synths: one tvtts_synth per voice index, each
- * opened at 16 kHz in its own language ("en" for 0-9, "es" for 10-19).
+ * opened at 16 kHz in its own language row ("en" 0-10, "es" 11-21,
+ * "en-GB" 32-42; the app does not offer the Japanese voices at 22-31).
  *
  * Ported from iTruVoice TruVoice: a synth is not thread safe, so every
  * method here serializes on one lock and the service additionally funnels

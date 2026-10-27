@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 /**
- * TruVoice as an Android TTS engine: the twenty Centigram voices (ten
+ * TruVoice as an Android TTS engine: the thirty-three Centigram voices (eleven
  * English, ten Spanish) at 16 kHz mono, with a Google-TTS fallback.
  *
  * Request flow: pick the voice (request voice name, else request
@@ -92,10 +92,13 @@ class TruVoiceTtsService : TextToSpeechService() {
 
     private fun availabilityFor(lang: String?, country: String?): Int {
         return when (lang?.lowercase()) {
-            "en", "eng" -> if (country.isNullOrEmpty() || country.equals("US", ignoreCase = true)) {
-                TextToSpeech.LANG_COUNTRY_AVAILABLE
-            } else {
-                TextToSpeech.LANG_AVAILABLE
+            "en", "eng" -> when {
+                // Peter speaks en-US and Nigel en-GB; any other English country
+                // gets the language without a country promise.
+                country.isNullOrEmpty() || country.equals("US", ignoreCase = true) ||
+                    country.equals("GB", ignoreCase = true) ->
+                    TextToSpeech.LANG_COUNTRY_AVAILABLE
+                else -> TextToSpeech.LANG_AVAILABLE
             }
             "es", "spa" -> if (country.isNullOrEmpty() || country.equals("ES", ignoreCase = true)) {
                 TextToSpeech.LANG_COUNTRY_AVAILABLE
@@ -136,18 +139,28 @@ class TruVoiceTtsService : TextToSpeechService() {
     }
 
     /**
+     * The BCP-47 tag a request is asking for, country included when the caller
+     * gave one: "en-GB" has to reach Nigel rather than Peter.
+     */
+    private fun tagFor(lang: String?, country: String?): String? {
+        val l = lang?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+        val c = country?.uppercase()?.takeIf { it.isNotBlank() } ?: return l
+        return "$l-$c"
+    }
+
+    /**
      * The voice TalkBack and the system voice picker use when the client
      * only sets a language: the user's saved voice when it speaks that
-     * language, else Peter/Pedro.
+     * language and country, else that language's first voice -- Peter for
+     * English, Nigel for English (United Kingdom), Pedro for Spanish.
      */
     override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String {
         val saved = prefs().getInt(KEY_DEFAULT_VOICE, VoiceCatalog.DEFAULT_VOICE)
-        val wantEs = lang?.lowercase()?.startsWith("es") == true
-        val savedIsEs = saved in 10..19
-        if (saved in 0..19 && savedIsEs == wantEs) {
+        val tag = tagFor(lang, country)
+        if (VoiceCatalog.speaksTag(saved, tag)) {
             return VoiceCatalog.androidNameFor(saved)
         }
-        return VoiceCatalog.androidNameFor(if (wantEs) 10 else 0)
+        return VoiceCatalog.androidNameFor(VoiceCatalog.defaultVoiceFor(tag))
     }
 
     // MARK: - Synthesis
@@ -330,21 +343,19 @@ class TruVoiceTtsService : TextToSpeechService() {
             }
         }
         // The user's saved voice (TalkBack only sets a language), when it
-        // speaks the requested language; else Peter/Pedro by language.
-        val wantEs = request.language?.lowercase()?.startsWith("es") == true ||
-            (request.language.isNullOrEmpty() && currentLang == "es")
+        // speaks the requested language and, if one was given, country; else
+        // that language's first voice. A request for en-GB must not land on
+        // Peter, who is American.
+        val requested = request.language?.takeIf { it.isNotBlank() }
+            ?: tagFor(currentLang, currentCountry)
         val saved = try {
             prefs().getInt(KEY_DEFAULT_VOICE, VoiceCatalog.DEFAULT_VOICE)
         } catch (t: Throwable) {
             VoiceCatalog.DEFAULT_VOICE
         }
-        if (saved in 0..19 && (saved in 10..19) == wantEs) return saved
+        if (VoiceCatalog.speaksTag(saved, requested)) return saved
         return try {
-            when (request.language?.lowercase()) {
-                "es", "spa" -> 10 // Pedro
-                "en", "eng" -> 0 // Peter
-                else -> if (currentLang == "es") 10 else 0
-            }
+            VoiceCatalog.defaultVoiceFor(requested)
         } catch (t: Throwable) {
             VoiceCatalog.DEFAULT_VOICE
         }

@@ -13,7 +13,7 @@
  * copied here rather than rewritten.
  *
  * It owns the English engine, and only that.  The library carries one of these
- * per language -- es_port/tvtts_es.c is the Spanish one -- and the public names
+ * per language -- lang/spa/port/tvtts_es.c is the Spanish one -- and the public names
  * belong to src/port/api.c, which picks between them; what each language has to
  * provide is the en_ and es_ contract in include/tvtts_port.h.  What is left
  * public here is everything that touches no engine and so serves both: the
@@ -37,6 +37,8 @@ void en_set_extensions(uint32_t mask)
 {
     tv_ext_rate = (mask & TVTTS_EXT_RATE) != 0;
     tv_ext_clarity = (mask & TVTTS_EXT_CLARITY) != 0;
+    tv_ext_sing = (mask & TVTTS_EXT_SING) != 0;
+    tv_ext_pitch = (mask & TVTTS_EXT_PITCH) != 0;
 }
 
 /* The engine object has no allocator of its own -- in the original it lives
@@ -55,11 +57,28 @@ void en_set_extensions(uint32_t mask)
 
 extern uint8_t UserLex_Add(const char *word, const char *phonemes);
 
-#define TV_VOICES 10
+/* The ten the DLL carries, plus whatever src/engine/voices.c adds. */
+#define TV_VOICES (TV_STOCK_VOICES + (int)tv_extra_voice_count)
 
 struct en_synth {
     /* First, so Sapi_QueuePush can get back here from Engine.sapi. */
     SapiCentral host;
+    /*
+     * OpenTV: what the *caller* asked for, which is not what `host` holds.
+     * `host` is the block the engine reports into -- Engine.sapi points at it
+     * -- and an `ESC[<n>p` in the text writes its new pitch straight back
+     * there (see control.c, `case 'p'`).  That is right for a host being told
+     * what is playing and wrong for a record of what was configured: a score
+     * sets the pitch for every note, so the setting the caller made is gone by
+     * the end of the song.  These four are only ever written from the setters.
+     */
+    struct {
+        int      voice;
+        int16_t  pitch;
+        int32_t  speed;
+        int32_t  volume;
+        uint32_t ctx;
+    } cfg;
     Engine     *eng;
     uint8_t    *outbuf;
     uint32_t    rate;
@@ -392,6 +411,11 @@ void *en_create(uint32_t sample_rate)
     s->host.speed = (int32_t)g_voice_speed[0];
     s->host.volume = 0xffff;
     s->host.ctx = 0;
+    s->cfg.voice = s->host.voice;
+    s->cfg.pitch = s->host.pitch;
+    s->cfg.speed = s->host.speed;
+    s->cfg.volume = s->host.volume;
+    s->cfg.ctx = s->host.ctx;
 
     en_set_extensions(tvtts_get_extensions());
     Engine_Construct(s->eng);
@@ -428,8 +452,10 @@ void en_set_voice(void *vs, int voice)
 {
     struct en_synth *s = (struct en_synth *)vs;
 
-    if (s != NULL && voice >= 0 && voice < TV_VOICES)
+    if (s != NULL && voice >= 0 && voice < TV_VOICES) {
         s->host.voice = voice;
+        s->cfg.voice = voice;
+    }
 }
 
 void en_set_rate(void *vs, int wpm)
@@ -443,45 +469,51 @@ void en_set_rate(void *vs, int wpm)
      * ceiling is deliberately not enforced: past 253 the engine reads
      * off the end of the table, which is nonsense but is the original's
      * nonsense, and the corpus checks it at 260 and 400. */
-    if (s != NULL)
+    if (s != NULL) {
         s->host.speed = wpm < TVTTS_RATE_MIN ? TVTTS_RATE_MIN : wpm;
+        s->cfg.speed = s->host.speed;
+    }
 }
 
 void en_set_pitch(void *vs, int pitch)
 {
     struct en_synth *s = (struct en_synth *)vs;
 
-    if (s != NULL)
+    if (s != NULL) {
         s->host.pitch = (int16_t)pitch;
+        s->cfg.pitch = s->host.pitch;
+    }
 }
 
 void en_set_volume(void *vs, uint32_t volume)
 {
     struct en_synth *s = (struct en_synth *)vs;
 
-    if (s != NULL)
+    if (s != NULL) {
         s->host.volume = (int32_t)volume;
+        s->cfg.volume = s->host.volume;
+    }
 }
 
 int en_get_voice(const void *vs)
 {
     const struct en_synth *s = (const struct en_synth *)vs;
 
-    return s != NULL ? s->host.voice : -1;
+    return s != NULL ? s->cfg.voice : -1;
 }
 
 int en_get_rate(const void *vs)
 {
     const struct en_synth *s = (const struct en_synth *)vs;
 
-    return s != NULL ? (int)s->host.speed : -1;
+    return s != NULL ? (int)s->cfg.speed : -1;
 }
 
 int en_get_pitch(const void *vs)
 {
     const struct en_synth *s = (const struct en_synth *)vs;
 
-    return s != NULL ? (int)(uint16_t)s->host.pitch : -1;
+    return s != NULL ? (int)(uint16_t)s->cfg.pitch : -1;
 }
 
 /* ---- output rate ---------------------------------------------------------- */
@@ -584,9 +616,11 @@ static const char *voice_entry(int voice)
     const char *p = g_voice_names;
     int i, pos;
 
-    if (voice < 0 || voice >= TV_VOICES)
+    /* The blob holds the DLL's ten only; a voice of ours is named by
+     * its own definition and never reaches here. */
+    if (voice < 0 || voice >= TV_STOCK_VOICES)
         return NULL;
-    pos = voice == 0 ? 0 : TV_VOICES - voice;
+    pos = voice == 0 ? 0 : TV_STOCK_VOICES - voice;
     for (i = 0; i < pos; i++) {
         size_t n = strlen(p) + 1;          /* the ANSI name */
         p += (n + 3) & ~(size_t)3;
@@ -600,17 +634,21 @@ static const char *voice_entry(int voice)
 
 const char *en_voice_name(int voice)
 {
-    return voice_entry(voice);
+    /* A voice of this project's own carries its name in its definition; the
+     * blob voice_entry walks holds the DLL's ten and nothing else. */
+    const char *extra = tv_extra_voice_name((int32_t)voice);
+
+    return extra != NULL ? extra : voice_entry(voice);
 }
 
 int en_voice_rate(int voice)
 {
-    return (voice >= 0 && voice < TV_VOICES) ? (int)g_voice_speed[voice] : -1;
+    return (voice >= 0 && voice < TV_VOICES) ? (int)tv_v_speed(voice) : -1;
 }
 
 int en_voice_pitch(int voice)
 {
-    return (voice >= 0 && voice < TV_VOICES) ? (int)g_voice_pitch[voice] : -1;
+    return (voice >= 0 && voice < TV_VOICES) ? (int)tv_v_pitch(voice) : -1;
 }
 
 int TVTTS_CALL tvtts_add_lexicon(const char *word, const char *phonemes)
@@ -644,11 +682,90 @@ int en_speak_bytes(void *vs, const void *text, uint32_t len,
         return -1;
     if (len != 0)
         memcpy(buf, text, len);
+    /*
+     * `[:phone TruVoice on|off]` is a command in the text rather than an
+     * escape, so it is turned into one here, before the engine sees any of
+     * it.  Gated, and the rewrite only shortens, so the buffer above still
+     * holds it.
+     */
+    if (tv_ext_sing && len != 0)
+        len = (uint32_t)tv_phone_commands(buf, len);
+    /*
+     * And `CamelCase` read as the words it is made of, which the engine has no
+     * notion of.  After the command rewrite, never before: before, it splits
+     * the command's own name and then the phoneme text the command introduces.
+     */
+    if ((tvtts_get_extensions() & TVTTS_EXT_CAMEL) && len != 0) {
+        uint32_t add = (uint32_t)tv_camel_split(buf, len, NULL);
+
+        if (add != 0) {
+            char *wide = (char *)malloc(len + add + (uint32_t)s->nuls + 1);
+
+            if (wide != NULL) {
+                tv_camel_split(buf, len, wide);
+                free(buf);
+                buf = wide;
+                len += add;
+            }
+        }
+    }
     memset(buf + len, 0, (size_t)s->nuls + 1);
     textlen = len + (uint32_t)s->nuls;
 
-    if (s->started)
+    if (s->started) {
         Engine_Reset(E);
+        /*
+         * OpenTV: and give the caller's settings back.
+         *
+         * `ESC[<n>p` moves the engine's pitch and reports itself into `host`,
+         * so by the end of an utterance both the engine and this layer's idea
+         * of the pitch are the song's rather than the caller's.  Engine_Reset
+         * does not touch either.  Measured: "hello there" after one 300 ms C4
+         * came out at 355 Hz against 105 on a synth that had not sung, and
+         * stayed there for every utterance after it.
+         *
+         * So `host` is put back from `cfg` -- which only the setters write --
+         * and the pitch is pushed into the engine, the two places it lives.
+         * The block further down then finds speed, volume and voice changed
+         * and re-sends those for the same reason.
+         */
+        s->host.voice = s->cfg.voice;
+        s->host.pitch = s->cfg.pitch;
+        s->host.speed = s->cfg.speed;
+        s->host.volume = s->cfg.volume;
+        s->host.ctx = s->cfg.ctx;
+        E->cur_pitch = (uint32_t)(uint16_t)s->cfg.pitch;
+        Engine_SetPitch(E, (int32_t)E->cur_pitch);
+    }
+    /*
+     * OpenTV: start every utterance with the singing state clear.
+     *
+     * tv_sing_dur and tv_sing_f0q are globals -- they have to be, since they
+     * carry a value from one stage of the pipeline to the next -- so
+     * Engine_Reset cannot reach them.  A score ends with `ESC[0;0q` to hand the
+     * pitch back, and that is not enough on its own: the pitch is applied at
+     * stage 4, which only advances as the synthesiser consumes frames, so an
+     * escape sitting after the last phoneme of a score has nothing left to
+     * carry it and never runs.  The forced period then survives into whatever
+     * the synth says next.
+     *
+     * The utterance boundary is this layer's to know, so this is where they are
+     * cleared.
+     */
+    {
+        int k;
+
+        for (k = 0; k < 5; k++) {
+            tv_sing_dur[k] = 0;
+            tv_sing_f0q[k] = 0;
+        }
+        tv_sing_per = 0;
+        tv_sing_f0_fx = 0;
+        tv_sing_f0_tgt = 0;
+        tv_sing_f0_step = 0;
+        tv_sing_vib_ph = 0;
+    }
+
     s->started = 1;
     E->preformat = (uint8_t)s->preformat;
     E->textin_on = (uint8_t)s->textin;
@@ -747,6 +864,111 @@ int en_speak_bytes(void *vs, const void *text, uint32_t len,
     return r;
 }
 
+/* ---- parameter frames ---------------------------------------------------- */
+
+/*
+ * Drive the synthesiser directly: 22 parameter tracks per 10 ms frame, with
+ * stages 0 to 3 bypassed entirely.
+ *
+ * docs/VOICES.md documents the escape pair `ESC[<track>;<value>l` and
+ * `ESC[<n>g` as a way to place the resonators by hand, and it is fine for a
+ * handful of frames.  It is not a way to drive a voice: the escapes travel as
+ * control nodes through a pipeline sized for speech, and past about ten of them
+ * the queue stops delivering what was asked -- a run of bare holds after a
+ * change sequence *replays* that sequence rather than holding its last frame.
+ * Rendering a word as one utterance per segment and splicing the audio works,
+ * but every splice is an utterance boundary: the glottal phase restarts, and
+ * measured across one 0.8 s word the joins stepped up to 46% of local peak.
+ *
+ * So this writes the frames where stage 3 would have written them and lets the
+ * synthesiser run straight through, which is what makes a continuous signal
+ * possible at all.  The track layout is the one in docs/VOICES.md; the ring is
+ * 256 frames and the filling here is `Stage3_Hold`'s loop with the caller's
+ * frames in place of a held one.
+ *
+ * English only, as the phoneme entry points are: the Spanish engine is a
+ * separate object with its own tracks.
+ */
+int en_speak_frames(void *vs, const uint8_t *frames, uint32_t n_frames,
+                    tvtts_callback cb, void *user)
+{
+    struct en_synth *s = (struct en_synth *)vs;
+    Engine *E;
+    uint32_t f = 0;
+    long steps = 0;
+    int i;
+
+    if (s == NULL || (frames == NULL && n_frames != 0))
+        return -1;
+    E = s->eng;
+
+    if (s->started)
+        Engine_Reset(E);
+    s->started = 1;
+    E->out_count = 0;
+    s->cb = cb;
+    s->user = user;
+    s->pos = 0;
+    s->aborted = 0;
+
+    /*
+     * No stop marker while frames are still arriving: `Synth_Step` sets
+     * `synth_busy` the moment the reader reaches `trk_08`, and -1 is the value
+     * the engine itself uses for "not set" (see `Tracks_Op`'s rebase, which
+     * skips it).  `s3_1fe0` is the lookahead `Synth_Frame` insists on having
+     * ahead of the reader; 2 is what stage 3 uses for a short transition.
+     */
+    E->trk_08 = -1;
+    E->s3_1fe0 = 2;
+    E->synth_busy = 0;
+    E->synth_hold = 0;
+
+    while (!s->aborted) {
+        /* Fill while the 256-frame ring has room. */
+        while (f < n_frames && Tracks_Op(E, 1, 1)) {
+            int32_t pos = E->trk_0c;
+
+            for (i = 0; i < 22; i++)
+                E->trk_buf[i][pos & 0xff] = frames[f * 22 + (uint32_t)i];
+            pos++;
+            for (i = 0; i < 22; i++) {
+                E->trk_rd[i] = pos - E->s3_1fe0;
+                E->trk_wr[i] = pos;
+            }
+            E->trk_0c = pos;
+            E->trk_10 = pos;
+            f++;
+        }
+        if (f >= n_frames) {
+            /* Everything is in; let the reader run out and stop cleanly. */
+            if (E->trk_08 == -1)
+                E->trk_08 = E->trk_0c - 2;
+            if (E->trk_04 >= E->trk_08)
+                break;
+        }
+        Synth_Step(E);
+        if (E->out_count != 0) {
+            uint32_t n = E->out_count / 2;
+            E->out_count = 0;
+            if (n != 0)
+                emit_audio(s, (const int16_t *)s->outbuf, n);
+        }
+        if (++steps > 10000000L)         /* no progress; do not spin forever */
+            break;
+    }
+    if (E->out_count != 0) {
+        uint32_t n = E->out_count / 2;
+        E->out_count = 0;
+        if (n != 0)
+            emit_audio(s, (const int16_t *)s->outbuf, n);
+    }
+    if (!s->aborted)
+        emit(s, TVTTS_END, NULL, 0, 0, s->pos);
+    s->cb = NULL;
+    s->user = NULL;
+    return s->aborted;
+}
+
 /* ---- phonemes ------------------------------------------------------------ */
 
 /* The audio a phoneme conversion produces is not wanted, only the trace. */
@@ -820,6 +1042,54 @@ int en_text_to_phonemes(void *vs, const char *text,
     return (int)need;
 }
 
+/*
+ * UTF-16 to UTF-8, for a language that reads its own script.
+ *
+ * Narrowing to cp1252 is right for the two engines whose phoneme tables are
+ * built on it, and it is destruction for any other alphabet -- every kana
+ * becomes a question mark, so a Japanese synth handed text through the UTF-16
+ * entry point would have spoken a row of question marks.  Which conversion to
+ * do is the language's business, and the table in api.c says.
+ */
+static char *to_utf8_utf16(const uint16_t *w, uint32_t *out_len)
+{
+    uint32_t len = 0, n = 0, i;
+    char *b;
+
+    while (w[len] != 0)
+        len++;
+    b = (char *)malloc((size_t)len * 4 + 1);  /* 4 bytes is the most one takes */
+    if (b == NULL)
+        return NULL;
+    for (i = 0; i < len; i++) {
+        uint32_t u = w[i];
+
+        if (u >= 0xd800 && u <= 0xdbff && i + 1 < len &&
+            w[i + 1] >= 0xdc00 && w[i + 1] <= 0xdfff) {
+            u = 0x10000u + ((u - 0xd800u) << 10) + (w[i + 1] - 0xdc00u);
+            i++;
+        }
+        if (u < 0x80) {
+            b[n++] = (char)u;
+        } else if (u < 0x800) {
+            b[n++] = (char)(0xc0 | (u >> 6));
+            b[n++] = (char)(0x80 | (u & 0x3f));
+        } else if (u < 0x10000) {
+            b[n++] = (char)(0xe0 | (u >> 12));
+            b[n++] = (char)(0x80 | ((u >> 6) & 0x3f));
+            b[n++] = (char)(0x80 | (u & 0x3f));
+        } else {
+            b[n++] = (char)(0xf0 | (u >> 18));
+            b[n++] = (char)(0x80 | ((u >> 12) & 0x3f));
+            b[n++] = (char)(0x80 | ((u >> 6) & 0x3f));
+            b[n++] = (char)(0x80 | (u & 0x3f));
+        }
+    }
+    b[n] = 0;
+    *out_len = n;
+    return b;
+}
+
 int TVTTS_CALL tvtts_speak_utf8(tvtts_synth *s, const char *text,
                                 tvtts_callback cb, void *user)
 {
@@ -829,6 +1099,9 @@ int TVTTS_CALL tvtts_speak_utf8(tvtts_synth *s, const char *text,
 
     if (s == NULL || text == NULL)
         return -1;
+    /* Already UTF-8, and this language wants it that way: nothing to do. */
+    if (tv_lang_utf8(s))
+        return tvtts_speak_bytes(s, text, (uint32_t)strlen(text), cb, user);
     b = to_cp1252_utf8(text, &len);
     if (b == NULL)
         return -1;
@@ -846,7 +1119,8 @@ int TVTTS_CALL tvtts_speak_utf16(tvtts_synth *s, const uint16_t *text,
 
     if (s == NULL || text == NULL)
         return -1;
-    b = to_cp1252_utf16(text, &len);
+    b = tv_lang_utf8(s) ? to_utf8_utf16(text, &len)
+                        : to_cp1252_utf16(text, &len);
     if (b == NULL)
         return -1;
     r = tvtts_speak_bytes(s, b, len, cb, user);

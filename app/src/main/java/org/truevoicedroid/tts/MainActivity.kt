@@ -175,7 +175,7 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             emptyList()
         }
-        // Keep only this engine's voices, in engine order (0-19).
+        // Keep only this engine's voices, in engine order.
         voices = all.filter { it.name.startsWith("TruVoice ") }.sortedBy {
             VoiceCatalog.indexFromAndroidName(it.name) ?: Int.MAX_VALUE
         }
@@ -205,7 +205,9 @@ class MainActivity : AppCompatActivity() {
             VoiceCatalog.DEFAULT_VOICE
         }
         val start = if (voices.isEmpty()) {
-            if (savedIdx in 0..19) savedIdx else peter
+            // The fallback list is VoiceCatalog.all, so the position is the
+            // saved engine number's place in it, not the number itself.
+            VoiceCatalog.all.indexOfFirst { it.index == savedIdx }.takeIf { it >= 0 } ?: peter
         } else {
             voices.indexOfFirst {
                 VoiceCatalog.indexFromAndroidName(it.name) == savedIdx
@@ -303,10 +305,8 @@ class MainActivity : AppCompatActivity() {
     private fun saveSpinnerVoice(pos: Int) {
         val index = if (voices.isNotEmpty() && pos in voices.indices) {
             VoiceCatalog.indexFromAndroidName(voices[pos].name)
-        } else if (pos in 0..19) {
-            pos
         } else {
-            null
+            VoiceCatalog.all.getOrNull(pos)?.index
         }
         if (index == null) return
         getSharedPreferences(TruVoiceTtsService.PREFS, MODE_PRIVATE).edit()

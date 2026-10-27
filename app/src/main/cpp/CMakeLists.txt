@@ -44,52 +44,82 @@ set(EN_SOURCES
     ${VENDOR}/src/engine/textin.c
     ${VENDOR}/src/engine/track.c
     ${VENDOR}/src/engine/volume.c
+    ${VENDOR}/src/engine/volume.c
     ${VENDOR}/src/engine/vowel.c
+    # OpenTV's own extra voices (Frank for English) and the score compiler,
+    # whose file also carries the text-pipeline pieces every utterance runs
+    # through (tv_camel_split, tv_phone_commands).
+    ${VENDOR}/src/engine/voices.c
+    ${VENDOR}/src/port/sing.c
+    # General British's vowel targets and stage-1 substitutions; the en-GB row
+    # in src/port/api.c calls into it.
+    ${VENDOR}/src/engine/gb.c
     ${VENDOR}/src/syn_hifi.c
     ${VENDOR}/src/port/api.c
     ${VENDOR}/src/port/tvtts.c
     ${VENDOR}/src/port/msvcrt.c
     ${VENDOR}/src/port/stubs.c
     ${VENDOR}/generated/tvdata.s
+    # The two language ports api.c names unconditionally: British English
+    # (wrappers over the American engine) and Japanese (a front end below
+    # stage 3). Japanese links but is not offered: its front end needs the
+    # 27 MB jadic.bin upstream loads from disk, which this app does not ship.
+    ${VENDOR}/lang/eng/port/tvtts_engb.c
+    ${VENDOR}/lang/jpn/port/ja_devoice_tab.c
+    ${VENDOR}/lang/jpn/port/ja_dict.c
+    ${VENDOR}/lang/jpn/port/ja_digit.c
+    ${VENDOR}/lang/jpn/port/ja_frame.c
+    ${VENDOR}/lang/jpn/port/ja_front.c
+    ${VENDOR}/lang/jpn/port/ja_g2p.c
+    ${VENDOR}/lang/jpn/port/ja_g2p_tab.c
+    ${VENDOR}/lang/jpn/port/ja_mora.c
+    ${VENDOR}/lang/jpn/port/ja_njd.c
+    ${VENDOR}/lang/jpn/port/ja_ojt.c
+    ${VENDOR}/lang/jpn/port/ja_pitch.c
+    ${VENDOR}/lang/jpn/port/ja_tables.c
+    ${VENDOR}/lang/jpn/port/ja_voice.c
+    ${VENDOR}/lang/jpn/port/tvtts_ja.c
 )
 
 set(ES_SOURCES
-    ${VENDOR}/es/adjust.c
-    ${VENDOR}/es/bittab.c
-    ${VENDOR}/es/cluster.c
-    ${VENDOR}/es/contour.c
-    ${VENDOR}/es/control.c
-    ${VENDOR}/es/engine.c
-    ${VENDOR}/es/escape.c
-    ${VENDOR}/es/flush.c
-    ${VENDOR}/es/generate.c
-    ${VENDOR}/es/input.c
-    ${VENDOR}/es/interp.c
-    ${VENDOR}/es/list.c
-    ${VENDOR}/es/node.c
-    ${VENDOR}/es/number.c
-    ${VENDOR}/es/params.c
-    ${VENDOR}/es/phone.c
-    ${VENDOR}/es/preformat.c
-    ${VENDOR}/es/prosody.c
-    ${VENDOR}/es/reset.c
-    ${VENDOR}/es/ring.c
-    ${VENDOR}/es/rule.c
-    ${VENDOR}/es/segment.c
-    ${VENDOR}/es/stage.c
-    ${VENDOR}/es/stage0.c
-    ${VENDOR}/es/stage1.c
-    ${VENDOR}/es/stage2.c
-    ${VENDOR}/es/stage3.c
-    ${VENDOR}/es/stage3seg.c
-    ${VENDOR}/es/stage4.c
-    ${VENDOR}/es/synth.c
-    ${VENDOR}/es/tables.c
-    ${VENDOR}/es/textin.c
-    ${VENDOR}/es/track.c
-    ${VENDOR}/es/util.c
-    ${VENDOR}/es_port/msvcrt_es.c
-    ${VENDOR}/es_port/tvtts_es.c
+    ${VENDOR}/lang/spa/engine/adjust.c
+    ${VENDOR}/lang/spa/engine/bittab.c
+    ${VENDOR}/lang/spa/engine/cluster.c
+    ${VENDOR}/lang/spa/engine/contour.c
+    ${VENDOR}/lang/spa/engine/control.c
+    ${VENDOR}/lang/spa/engine/engine.c
+    ${VENDOR}/lang/spa/engine/escape.c
+    ${VENDOR}/lang/spa/engine/flush.c
+    ${VENDOR}/lang/spa/engine/generate.c
+    ${VENDOR}/lang/spa/engine/input.c
+    ${VENDOR}/lang/spa/engine/interp.c
+    ${VENDOR}/lang/spa/engine/list.c
+    ${VENDOR}/lang/spa/engine/node.c
+    ${VENDOR}/lang/spa/engine/number.c
+    ${VENDOR}/lang/spa/engine/params.c
+    ${VENDOR}/lang/spa/engine/phone.c
+    ${VENDOR}/lang/spa/engine/preformat.c
+    ${VENDOR}/lang/spa/engine/prosody.c
+    ${VENDOR}/lang/spa/engine/reset.c
+    ${VENDOR}/lang/spa/engine/ring.c
+    ${VENDOR}/lang/spa/engine/rule.c
+    ${VENDOR}/lang/spa/engine/segment.c
+    ${VENDOR}/lang/spa/engine/stage.c
+    ${VENDOR}/lang/spa/engine/stage0.c
+    ${VENDOR}/lang/spa/engine/stage1.c
+    ${VENDOR}/lang/spa/engine/stage2.c
+    ${VENDOR}/lang/spa/engine/stage3.c
+    ${VENDOR}/lang/spa/engine/stage3seg.c
+    ${VENDOR}/lang/spa/engine/stage4.c
+    ${VENDOR}/lang/spa/engine/synth.c
+    ${VENDOR}/lang/spa/engine/tables.c
+    ${VENDOR}/lang/spa/engine/textin.c
+    ${VENDOR}/lang/spa/engine/track.c
+    ${VENDOR}/lang/spa/engine/util.c
+    # OpenTV's own extra Spanish voice (Francisco).
+    ${VENDOR}/lang/spa/engine/voices.c
+    ${VENDOR}/lang/spa/port/msvcrt_es.c
+    ${VENDOR}/lang/spa/port/tvtts_es.c
     ${VENDOR}/generated/tvdata_es.s
 )
 
@@ -100,6 +130,8 @@ target_include_directories(truvoice_en PRIVATE
     ${VENDOR}/src
     ${VENDOR}/generated
     ${VENDOR}/include
+    ${VENDOR}/lang/eng/data
+    ${VENDOR}/lang/jpn/port
 )
 target_compile_options(truvoice_en PRIVATE -O2 -std=gnu11
     # The table image packs symbols with no inter-symbol alignment, and the
@@ -114,7 +146,7 @@ target_compile_options(truvoice_en PRIVATE -O2 -std=gnu11
 # force-included into exactly these translation units.
 add_library(truvoice_es STATIC ${ES_SOURCES})
 target_include_directories(truvoice_es PRIVATE
-    ${VENDOR}/es
+    ${VENDOR}/lang/spa/engine
     ${VENDOR}/src
     ${VENDOR}/include
     ${VENDOR}/generated
@@ -130,4 +162,5 @@ target_compile_options(truvoice_es PRIVATE
 add_library(truvoicedroid SHARED truvoice_jni.c)
 target_include_directories(truvoicedroid PRIVATE ${VENDOR}/include)
 target_compile_options(truvoicedroid PRIVATE -O2 -Wall -std=gnu11)
-target_link_libraries(truvoicedroid truvoice_en truvoice_es log)
+# m: the Japanese pitch contour uses exp and log.
+target_link_libraries(truvoicedroid truvoice_en truvoice_es log m)

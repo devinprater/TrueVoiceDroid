@@ -15,7 +15,14 @@
  * one goes on the end.
  *
  * Adding a language is a row in the table below, a file like
- * es_port/tvtts_es.c, and nothing else.
+ * lang/spa/port/tvtts_es.c, and nothing else.
+ *
+ * Japanese is the third, and the first that is not a decompilation.  No
+ * Japanese TruVoice exists, so there was nothing to be byte-exact against and
+ * nothing to decompile; its front end is built from the phonetics literature
+ * and it drives the 1997 synthesiser through en_speak_frames, which is the
+ * layer below stage 3 and knows nothing about any language.  From here it is a
+ * row like the other two, which is the point of this file.
  */
 #include <stdlib.h>
 #include <string.h>
@@ -31,24 +38,51 @@
  * TruVoice", which does not distinguish a variety.
  */
 #define EN_LANG                                                               \
-    { "en", "American English", 10, en_create, en_destroy,                    \
+    { "en", "American English", en_create, en_destroy,                    \
       en_set_voice, en_set_rate, en_set_pitch, en_set_volume,                 \
       en_get_voice, en_get_rate, en_get_pitch,                                \
       en_get_rate_hz, en_set_rate_hz, en_set_compat, en_set_textin_mode,      \
       en_voice_count, en_voice_name, en_voice_rate, en_voice_pitch,           \
-      en_speak_bytes, en_set_extensions }
+      en_speak_bytes, en_set_extensions, 0 }
 
 #define ES_LANG                                                               \
-    { "es", "Castilian Spanish", 10, es_create, es_destroy,                   \
+    { "es", "Castilian Spanish", es_create, es_destroy,                   \
       es_set_voice, es_set_rate, es_set_pitch, es_set_volume,                 \
       es_get_voice, es_get_rate, es_get_pitch,                                \
       es_get_rate_hz, es_set_rate_hz, es_set_compat, es_set_textin_mode,      \
       es_voice_count, es_voice_name, es_voice_rate, es_voice_pitch,           \
-      es_speak_bytes, es_set_extensions }
+      es_speak_bytes, es_set_extensions, 0 }
+
+/*
+ * Japanese reads its own script, so it takes UTF-8 where the two cp1252
+ * engines take bytes -- the 1 in the last column.  Everything else about the
+ * row is the same shape.
+ */
+#define JA_LANG                                                               \
+    { "ja", "Japanese", ja_create, ja_destroy,                                \
+      ja_set_voice, ja_set_rate, ja_set_pitch, ja_set_volume,                 \
+      ja_get_voice, ja_get_rate, ja_get_pitch,                                \
+      ja_get_rate_hz, ja_set_rate_hz, ja_set_compat, ja_set_textin_mode,      \
+      ja_voice_count, ja_voice_name, ja_voice_rate, ja_voice_pitch,           \
+      ja_speak_bytes, ja_set_extensions, 1 }
+
+/*
+ * General British.  Not a front end of its own: the American one, with stage
+ * 3 aiming at Cruttenden's GB vowel targets instead of Centigram's American
+ * ones.  See lang/eng/port/tvtts_engb.c.
+ */
+#define ENGB_LANG                                                                 { "en-GB", "British English", engb_create, engb_destroy,                        engb_set_voice, engb_set_rate, engb_set_pitch, engb_set_volume,               engb_get_voice, engb_get_rate, engb_get_pitch,                                engb_get_rate_hz, engb_set_rate_hz, engb_set_compat,                          engb_set_textin_mode,                                                         engb_voice_count, engb_voice_name, engb_voice_rate, engb_voice_pitch,         engb_speak_bytes, engb_set_extensions, 0 }
 
 /* In voice order: English first, because it was first and because renumbering
- * anybody's saved voice would be unkind. */
-static const tvtts_lang g_langs[] = { EN_LANG, ES_LANG };
+ * anybody's saved voice would be unkind.  A new language goes on the END for
+ * the same reason.  Measured, because this numbering has caught us out before
+ * -- tvtts_set_voice(s, 0) on a British synth quietly hands back Peter and
+ * switches the language to suit -- and because the figures written here
+ * before were simply wrong: of 43 voices, en is 0..10 (Peter..Frank), es
+ * 11..21 (Pedro..Francisco), ja 22..31 (Taro..Keiko) and en-GB 32..42
+ * (Nigel..Bernard). */
+static const tvtts_lang g_langs[] = { EN_LANG, ES_LANG, JA_LANG,
+                                     ENGB_LANG };
 
 #define NLANGS ((int)(sizeof g_langs / sizeof g_langs[0]))
 
@@ -65,6 +99,14 @@ struct tvtts_synth {
     int               preformat, textin, nuls, compat_set;
 };
 
+/* Which encoding a synth reads its text as.  tvtts_speak_utf8 and _utf16 live
+ * in the English file, which cannot see inside a synth, and the answer belongs
+ * to the language rather than to either of them. */
+int tv_lang_utf8(const tvtts_synth *s)
+{
+    return (s != NULL && s->lang != NULL) ? s->lang->utf8_text : 0;
+}
+
 /* ---- extensions ---------------------------------------------------------- */
 
 /*
@@ -77,7 +119,7 @@ struct tvtts_synth {
  * English, which already clamps where it moves Spanish to -- and which is which
  * is the language's business rather than this file's.
  */
-static uint32_t g_ext = TVTTS_EXT_ALL;
+static uint32_t g_ext = TVTTS_EXT_DEFAULT;
 
 void TVTTS_CALL tvtts_set_extensions(uint32_t mask)
 {
@@ -86,6 +128,56 @@ void TVTTS_CALL tvtts_set_extensions(uint32_t mask)
     g_ext = mask & TVTTS_EXT_ALL;
     for (i = 0; i < NLANGS; i++)
         g_langs[i].set_extensions(g_ext);
+}
+
+void TVTTS_CALL tvtts_set_portamento(int ms)
+{
+    extern int32_t tv_sing_glide_ms;
+
+    if (ms < 0)
+        ms = 0;
+    else if (ms > 1000)
+        ms = 1000;
+    tv_sing_glide_ms = ms;
+}
+
+int TVTTS_CALL tvtts_get_portamento(void)
+{
+    extern int32_t tv_sing_glide_ms;
+
+    return (int)tv_sing_glide_ms;
+}
+
+/*
+ * The waver a sung note carries.  English is the only language that sings, so
+ * this reaches into its engine rather than going through the language table.
+ */
+void TVTTS_CALL tvtts_set_vibrato(int rate_chz, int depth_chz)
+{
+    extern int32_t tv_sing_vib_rate;
+    extern int32_t tv_sing_vib_depth;
+
+    if (rate_chz < 1)
+        rate_chz = 1;
+    else if (rate_chz > 5000)
+        rate_chz = 5000;
+    if (depth_chz < 0)
+        depth_chz = 0;
+    else if (depth_chz > 5000)
+        depth_chz = 5000;
+    tv_sing_vib_rate = rate_chz;
+    tv_sing_vib_depth = depth_chz;
+}
+
+void TVTTS_CALL tvtts_get_vibrato(int *rate_chz, int *depth_chz)
+{
+    extern int32_t tv_sing_vib_rate;
+    extern int32_t tv_sing_vib_depth;
+
+    if (rate_chz != NULL)
+        *rate_chz = (int)tv_sing_vib_rate;
+    if (depth_chz != NULL)
+        *depth_chz = (int)tv_sing_vib_depth;
 }
 
 uint32_t TVTTS_CALL tvtts_get_extensions(void)
@@ -113,12 +205,12 @@ static const tvtts_lang *lang_of_voice(int voice, int *local)
     if (voice < 0)
         return NULL;
     for (i = 0; i < NLANGS; i++) {
-        if (voice < g_langs[i].voices) {
+        if (voice < g_langs[i].voice_count()) {
             if (local != NULL)
                 *local = voice;
             return &g_langs[i];
         }
-        voice -= g_langs[i].voices;
+        voice -= g_langs[i].voice_count();
     }
     return NULL;
 }
@@ -131,7 +223,7 @@ static int lang_base(const tvtts_lang *l)
     for (i = 0; i < NLANGS; i++) {
         if (&g_langs[i] == l)
             return base;
-        base += g_langs[i].voices;
+        base += g_langs[i].voice_count();
     }
     return 0;
 }
@@ -167,7 +259,7 @@ int TVTTS_CALL tvtts_voice_count(void)
     int i, n = 0;
 
     for (i = 0; i < NLANGS; i++)
-        n += g_langs[i].voices;
+        n += g_langs[i].voice_count();
     return n;
 }
 
@@ -413,6 +505,28 @@ int TVTTS_CALL tvtts_speak_bytes(tvtts_synth *s, const void *text, uint32_t len,
  * lowercase half for the diphthongs that English has no use for -- so a Spanish
  * one would be a separate piece of work rather than a dispatch.
  */
+/*
+ * The phoneme, frame and singing entry points read this engine's own alphabet,
+ * so they belong to the two rows that ARE this engine: American English and
+ * General British.  Returns 0 for anything else, and otherwise says whether
+ * stage 3 should be aiming at GB vowels for the call -- which is the only
+ * difference between the two.
+ */
+static int en_row(const tvtts_synth *s, int *gb)
+{
+    if (s == NULL)
+        return 0;
+    if (s->lang == &g_langs[0]) {
+        *gb = 0;
+        return 1;
+    }
+    if (strcmp(s->lang->code, "en-GB") == 0) {
+        *gb = 1;
+        return 1;
+    }
+    return 0;
+}
+
 int en_speak_phonemes(void *vs, const char *phonemes, tvtts_callback cb,
                       void *user);
 int en_text_to_phonemes(void *vs, const char *text, char *buf, uint32_t cap);
@@ -420,15 +534,79 @@ int en_text_to_phonemes(void *vs, const char *text, char *buf, uint32_t cap);
 int TVTTS_CALL tvtts_speak_phonemes(tvtts_synth *s, const char *phonemes,
                                     tvtts_callback cb, void *user)
 {
-    if (s == NULL || s->lang != &g_langs[0])
+    int gb, was, rc;
+
+    if (!en_row(s, &gb))
         return -1;
-    return en_speak_phonemes(s->impl, phonemes, cb, user);
+    was = tv_gb_get();
+    tv_gb_set(gb);
+    rc = en_speak_phonemes(s->impl, phonemes, cb, user);
+    tv_gb_set(was);
+    return rc;
+}
+
+int en_speak_frames(void *vs, const uint8_t *frames, uint32_t n_frames,
+                    tvtts_callback cb, void *user);
+
+int TVTTS_CALL tvtts_speak_frames(tvtts_synth *s, const uint8_t *frames,
+                                  uint32_t n_frames,
+                                  tvtts_callback cb, void *user)
+{
+    int gb, was, rc;
+
+    if (!en_row(s, &gb))
+        return -1;
+    was = tv_gb_get();
+    tv_gb_set(gb);
+    rc = en_speak_frames(s->impl, frames, n_frames, cb, user);
+    tv_gb_set(was);
+    return rc;
+}
+
+/*
+ * Sing a score.  English only, for the same reason the phoneme entry points
+ * are: the alphabet is this engine's and the 1995 engines do not share it.
+ *
+ * The compiler is pure and lives in sing.c, so what it produces can be checked
+ * without listening to anything; all this does is give it somewhere to write
+ * and hand the result to the ordinary byte path.
+ */
+int TVTTS_CALL tvtts_sing(tvtts_synth *s, const char *score,
+                          tvtts_callback cb, void *user)
+{
+    char *buf;
+    int n, rc;
+
+    int gb;
+
+    if (score == NULL || !en_row(s, &gb))
+        return -1;
+    n = tvtts_sing_compile(score, NULL, 0);
+    if (n <= 0)
+        return -1;
+    buf = (char *)malloc((size_t)n);
+    if (buf == NULL)
+        return -1;
+    tvtts_sing_compile(score, buf, (size_t)n);
+    rc = s->lang->speak_bytes(s->impl, buf, (uint32_t)(n - 1), cb, user);
+    free(buf);
+    return rc;
 }
 
 int TVTTS_CALL tvtts_text_to_phonemes(tvtts_synth *s, const char *text,
                                       char *buf, uint32_t cap)
 {
-    if (s == NULL || s->lang != &g_langs[0])
+    int gb, was, rc;
+
+    if (!en_row(s, &gb))
         return -1;
-    return en_text_to_phonemes(s->impl, text, buf, cap);
+    /* The flag matters here as well as when speaking: most of GB is a shift
+     * applied below the phoneme string, but the words whose vowel CHOICE
+     * differs -- bath, duty, dog -- are a lexicon consulted during stage 1,
+     * so the analysis itself differs for those.  See src/engine/gb.c. */
+    was = tv_gb_get();
+    tv_gb_set(gb);
+    rc = en_text_to_phonemes(s->impl, text, buf, cap);
+    tv_gb_set(was);
+    return rc;
 }
