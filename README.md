@@ -1,17 +1,23 @@
 # TrueVoiceDroid
 
 Centigram TruVoice as an Android `TextToSpeechService` (package
-`org.truevoicedroid.tts`), with Google-TTS fallback. 33 voices
-(Peter–Frank en-US, Pedro–Francisco es-ES, Nigel–Bernard en-GB), 16 kHz
-mono, word-boundary marks, spinner selection saved as the TalkBack default
-voice, shorten-pauses on by default.
+`org.truevoicedroid.tts`), with Google-TTS fallback. 43 voices
+(Peter–Frank en-US, Pedro–Francisco es-ES, Taro–Keiko ja-JP, Nigel–Bernard
+en-GB), 16 kHz mono, word-boundary marks, spinner selection saved as the
+TalkBack default voice, shorten-pauses on by default.
 
 British English is the same engine with stage 3's vowel targets re-aimed at
 General British and the accent's phoneme substitutions applied, not a second
 set of recordings: each British voice is the American speaker of the same
-number minus 32 under a British name. The engine also carries Japanese
-(indices 22–31) and it is not offered: its front end needs the 27 MB
-`jadic.bin` upstream loads from disk at runtime, which this app does not ship.
+number minus 32 under a British name.
+
+Japanese is not a decompilation -- there is no Japanese TruVoice to reproduce.
+Its front end reads a 27 MB morphological dictionary, `jadic.bin`, from disk.
+The file ships in `assets/`; `TruVoiceApp` copies it once to `filesDir`, checks
+its length, and points the engine at it with `TVTTS_JA_DICT` in every process.
+Without it the engine still speaks kana but silently drops every kanji and
+spells romaji out letter by letter, so the copy is verified before it is used.
+The APK is about 20 MB because of it.
 
 ## Tables / rights
 

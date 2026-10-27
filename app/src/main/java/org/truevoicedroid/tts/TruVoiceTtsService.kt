@@ -100,7 +100,16 @@ class TruVoiceTtsService : TextToSpeechService() {
                     TextToSpeech.LANG_COUNTRY_AVAILABLE
                 else -> TextToSpeech.LANG_AVAILABLE
             }
-            "es", "spa" -> if (country.isNullOrEmpty() || country.equals("ES", ignoreCase = true)) {
+            "es", "spa", "sp" -> if (country.isNullOrEmpty() ||
+                country.equals("ES", ignoreCase = true)
+            ) {
+                TextToSpeech.LANG_COUNTRY_AVAILABLE
+            } else {
+                TextToSpeech.LANG_AVAILABLE
+            }
+            "ja", "jpn", "jp" -> if (country.isNullOrEmpty() ||
+                country.equals("JP", ignoreCase = true)
+            ) {
                 TextToSpeech.LANG_COUNTRY_AVAILABLE
             } else {
                 TextToSpeech.LANG_AVAILABLE

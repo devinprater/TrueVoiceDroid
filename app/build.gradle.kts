@@ -11,8 +11,8 @@ android {
         applicationId = "org.truevoicedroid.tts"
         minSdk = 26
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 5
+        versionName = "0.5.0"
 
         ndk {
             // 64-bit first; 32-bit kept for old devices.

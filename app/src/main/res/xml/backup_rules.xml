@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Japanese dictionary is 27 MB and rebuilt from the APK's asset on any
+     device that lacks it; backing it up would only waste the quota. -->
+<full-backup-content>
+    <exclude domain="file" path="jadic.bin" />
+</full-backup-content>

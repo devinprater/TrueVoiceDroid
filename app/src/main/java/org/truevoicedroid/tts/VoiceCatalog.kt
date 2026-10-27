@@ -6,8 +6,9 @@ package org.truevoicedroid.tts
  *
  * The numbers are the engine's own and run across every language, so a number
  * is not a position here: English 0 through 10, Spanish 11 through 21,
- * Japanese 22 through 31 (compiled but not offered -- its front end needs the
- * 27 MB dictionary upstream loads from disk), British English 32 through 42.
+ * Japanese 22 through 31 (it needs the 27 MB dictionary; TruVoiceApp copies it
+ * out of the assets and points the engine at it), British English 32 through
+ * 42.
  * Each voice carries the tag the system is told; the engine row it speaks is
  * derived from that tag.
  *
@@ -44,6 +45,16 @@ object VoiceCatalog {
         VoiceInfo(19, "Josefa", "es-ES"),
         VoiceInfo(20, "Isabel", "es-ES"),
         VoiceInfo(21, "Francisco", "es-ES"),
+        VoiceInfo(22, "Taro", "ja-JP"),
+        VoiceInfo(23, "Tsuyoshi", "ja-JP"),
+        VoiceInfo(24, "Kenta", "ja-JP"),
+        VoiceInfo(25, "Daichi", "ja-JP"),
+        VoiceInfo(26, "Takeshi", "ja-JP"),
+        VoiceInfo(27, "Ojiisan", "ja-JP"),
+        VoiceInfo(28, "Osamu", "ja-JP"),
+        VoiceInfo(29, "Akira", "ja-JP"),
+        VoiceInfo(30, "Hanako", "ja-JP"),
+        VoiceInfo(31, "Keiko", "ja-JP"),
         VoiceInfo(32, "Nigel", "en-GB"),
         VoiceInfo(33, "Clive", "en-GB"),
         VoiceInfo(34, "Eager Edwin", "en-GB"),
@@ -67,6 +78,7 @@ object VoiceCatalog {
     fun languageFor(voice: Int): String = when {
         infoFor(voice)?.language == "en-GB" -> "en-GB"
         infoFor(voice)?.language?.startsWith("es") == true -> "es"
+        infoFor(voice)?.language?.startsWith("ja") == true -> "ja"
         else -> "en"
     }
 
@@ -79,7 +91,8 @@ object VoiceCatalog {
         val t = tag?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
         val lang = when (val l = t.substringBefore('-')) {
             "eng" -> "en"
-            "spa" -> "es"
+            "spa", "sp" -> "es"
+            "jpn", "jp" -> "ja"
             else -> l
         }
         return if ('-' in t) "$lang-${t.substringAfter('-')}" else lang
@@ -128,7 +141,9 @@ object VoiceCatalog {
         return entries.firstOrNull { androidNameFor(it.index) == name }?.index
     }
 
-    fun sampleText(voice: Int): String =
-        if (languageFor(voice) == "es") "Hola mundo. Esta es la voz TruVoice."
-        else "Hello world. This is TruVoice speaking."
+    fun sampleText(voice: Int): String = when (languageFor(voice)) {
+        "es" -> "Hola mundo. Esta es la voz TruVoice."
+        "ja" -> "こんにちは。トゥルーボイスです。"
+        else -> "Hello world. This is TruVoice speaking."
+    }
 }

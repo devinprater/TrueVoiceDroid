@@ -282,8 +282,13 @@ class MainActivity : AppCompatActivity() {
             } catch (e: Exception) {
             }
         } else {
+            // Headless Japanese and other language checks: --es lang ja-JP
+            // sends a language-only request in that locale, the way TalkBack
+            // does when the text's language is not the phone's.
+            val tag = intent.getStringExtra(EXTRA_LANG)
+            val locale = tag?.let { Locale.forLanguageTag(it) } ?: Locale.US
             try {
-                engine.language = Locale.US
+                engine.language = locale
             } catch (e: Exception) {
             }
         }
@@ -351,5 +356,6 @@ class MainActivity : AppCompatActivity() {
         const val EXTRA_RATE = "rate"
         const val EXTRA_PITCH = "pitch"
         const val EXTRA_SAMPLE_RATE = "sr"
+        const val EXTRA_LANG = "lang"
     }
 }
