@@ -71,13 +71,28 @@ object VoiceCatalog {
     }
 
     /**
+     * A tag reduced to what this catalog compares: ISO 639-1 language, country
+     * kept when given, and the 639-2 codes Android also uses folded onto the
+     * two-letter ones -- TalkBack asks for "eng", not "en".
+     */
+    private fun normalize(tag: String?): String? {
+        val t = tag?.lowercase()?.takeIf { it.isNotBlank() } ?: return null
+        val lang = when (val l = t.substringBefore('-')) {
+            "eng" -> "en"
+            "spa" -> "es"
+            else -> l
+        }
+        return if ('-' in t) "$lang-${t.substringAfter('-')}" else lang
+    }
+
+    /**
      * The first voice for a BCP-47 tag ("en-GB", "es-ES"), falling back to the
      * bare language ("en") and then to Peter. TalkBack asks by language, so
      * this is what decides that an English (United Kingdom) request gets
      * Nigel rather than Peter.
      */
     fun defaultVoiceFor(tag: String?): Int {
-        val want = tag?.lowercase()?.takeIf { it.isNotBlank() } ?: return DEFAULT_VOICE
+        val want = normalize(tag) ?: return DEFAULT_VOICE
         entries.firstOrNull { it.language.lowercase() == want }?.let { return it.index }
         val lang = want.substringBefore('-')
         entries.firstOrNull {
@@ -86,9 +101,21 @@ object VoiceCatalog {
         return DEFAULT_VOICE
     }
 
+    /**
+     * Whether [voice] speaks the same language as the BCP-47 [tag], ignoring
+     * the country. This is the test for "the user's saved voice wins within a
+     * language": an English (United Kingdom) request from TalkBack must not
+     * take a saved Nigel away from him just because the phone is en-US.
+     */
+    fun speaksLanguage(voice: Int, tag: String?): Boolean {
+        val want = normalize(tag) ?: return true
+        val have = infoFor(voice)?.language?.lowercase() ?: return false
+        return have.substringBefore('-') == want.substringBefore('-')
+    }
+
     /** Whether [voice] speaks the BCP-47 [tag], at country or language level. */
     fun speaksTag(voice: Int, tag: String?): Boolean {
-        val want = tag?.lowercase()?.takeIf { it.isNotBlank() } ?: return true
+        val want = normalize(tag) ?: return true
         val have = infoFor(voice)?.language?.lowercase() ?: return false
         return have == want || have.substringBefore('-') == want.substringBefore('-')
     }

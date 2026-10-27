@@ -157,7 +157,7 @@ class TruVoiceTtsService : TextToSpeechService() {
     override fun onGetDefaultVoiceNameFor(lang: String?, country: String?, variant: String?): String {
         val saved = prefs().getInt(KEY_DEFAULT_VOICE, VoiceCatalog.DEFAULT_VOICE)
         val tag = tagFor(lang, country)
-        if (VoiceCatalog.speaksTag(saved, tag)) {
+        if (VoiceCatalog.speaksLanguage(saved, tag)) {
             return VoiceCatalog.androidNameFor(saved)
         }
         return VoiceCatalog.androidNameFor(VoiceCatalog.defaultVoiceFor(tag))
@@ -353,7 +353,11 @@ class TruVoiceTtsService : TextToSpeechService() {
         } catch (t: Throwable) {
             VoiceCatalog.DEFAULT_VOICE
         }
-        if (VoiceCatalog.speaksTag(saved, requested)) return saved
+        // The saved voice wins within its language (that is the override
+        // setting's point); only when it cannot speak that language does the
+        // request's own tag pick one, and then en-GB gets Nigel, not Peter.
+        Log.i(TAG, "pickVoice saved=$saved requested=$requested name=${request.voiceName} override=$voiceOverride")
+        if (VoiceCatalog.speaksLanguage(saved, requested)) return saved
         return try {
             VoiceCatalog.defaultVoiceFor(requested)
         } catch (t: Throwable) {
